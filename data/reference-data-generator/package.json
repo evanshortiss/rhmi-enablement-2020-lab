@@ -1,0 +1,17 @@
+{
+  "name": "summit-2020-lab-on-rhmi-db-setup",
+  "version": "1.0.0",
+  "private": true,
+  "description": "## Requirements",
+  "main": "generate-csv.js",
+  "scripts": {
+    "start": "node generate-csv.js && json2csv -i meter_info.json -o meter_info.csv && json2csv -i junction_info.json -o junction_info.csv"
+  },
+  "keywords": [],
+  "author": "Evan Shortiss",
+  "license": "MIT",
+  "dependencies": {
+    "json2csv": "~4.5.3",
+    "yargs": "~14.0.0"
+  }
+}

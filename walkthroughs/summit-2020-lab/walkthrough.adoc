@@ -1,0 +1,844 @@
+:username: {user-sanitized-username}
+:openshift-console-url: {openshift-host}/dashboards
+:la-project-name: city-of-losangeles
+:kafka-broker-uri: iot-cluster-kafka-brokers.{la-project-name}.svc.cluster.local:9092
+:fuse-streams-connection-name: {user-username} AMQ Streams Message Broker
+:fuse-database-connection-name: {user-username} Postgres
+:streams-junction-topic-name: junctions
+:streams-meter-topic-name: meters
+:streams-junction-data-integration: {user-username} IoT Junction Data Ingestion
+:streams-meter-data-integration: {user-username} IoT Parking Meter Data Ingestion
+:dc-name: summit-2020-rhmi-lab-nodejs-backend
+:postgres-hostname: postgresql.{la-project-name}.svc.cluster.local
+:postgres-port: 5432
+:postgres-database: city-info
+:postgres-connection-url: jdbc:postgresql://{postgres-hostname}:{postgres-port}/{postgres-database}
+:postgres-username: {username}
+:postgres-password: Password1
+:postgres-junction-lookup-table: junction_info
+:postgres-meter-lookup-table: meter_info
+:postgres-junction-status-table: junction_status_{username}
+:postgres-meter-status-table: meter_status_{username}
+
+:oas3-url: https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.0.md
+:oas3-data-types-url: https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.0.md#dataTypes
+
+:3Scale-ProductName: 3scale API Management
+:3scale-base-name: {user-sanitized-username}-traffic-service
+:3scale-api-name: {3scale-base-name}-api
+:3scale-backend-name: {3scale-base-name}-api-backend
+:3scale-plan-name: {3scale-base-name}-plan
+:3scale-app-name: {3scale-base-name}-app
+:3scale-api-key: {3scale-base-name}-key
+:3scale-staging-api-host: https://{user-username}-traffic-api-staging.{openshift-app-host}:443
+
+:is-name: traffic-frontend
+
+= Red Hat Summit 2020 RHMI Lab
+
+Welcome to the Red Hat Summit 2020 Red Hat Managed Integration Lab!
+
+Red Hat Managed Integration (RHMI) delivers cloud-based agile integration services hosted on OpenShift Dedicated (OSD). Using RHMI we can create consistent, immediately available, managed environments so that development teams can more easily build enterprise applications on OpenShift.
+These environments accelerate engagement timelines, reduce operational risk and cost, and address the needs of the evolving enterprise integration market.
+
+In this lab you’re tasked with building out a real-time IoT traffic and parking meter management solution for the city of Los Angeles - don't worry we'll be helping you along the way!
+
+The tasks you'll perform include:
+
+{blank}
+
+* Data ingestion of real time traffic and parking meter data from AMQ Streams into a Postgres Database using Red Hat Fuse Online
+* Definition of an OpenAPI compatible API Spec using Red Hat API Designer
+* Deployment of a ready-made API using your choice of Runtime technologies - Fuse or Node.js
+* Protection of the API using 3scale API Management
+* Visualisation of the data from the API via a front end web app based on React.js and Patternfly.js
+
+{blank}
+
+To get you started, you will be provided with the following infrastructure:
+
+* An AMQ Streams instance with 2 topics - {streams-junction-topic-name} and {streams-meter-topic-name}. These topics will be connected to a live stream of IoT data which needs to be ingested
+* A Postgres server with two databases:
+- A pre-populated Lookup database containing reference data which maps incoming Ids for traffic junctions and parking meters to their corresponding names and geo locations
+- An empty database, with pre defined schemas for storing the live IoT traffic and sensor data
+* Access to the Red Hat API Designer tool for exploring the OpenAPI Spec compatible API definition
+* Implementation of the API Server Node.js which will have the API definition implemented and connectivity to Postgres pre-configured
+* Access to 3scale API Management service for protecting your API
+* An implementation of the front end web app with a API calls implemented
+
+{blank}
+
+The architecture diagram below provides an overview of the complete solution. Data is flowing from the right to left in the diagram.
+
+image::images/arch.png[integration, role="integr8ly-img-responsive"]
+
+
+[type=walkthroughResource,serviceName=openshift]
+.Red Hat OpenShift
+****
+* link:{openshift-console-url}[Console, window="_blank"]
+* link:https://help.openshift.com/[Openshift Online Help Center, window="_blank"]
+* link:https://blog.openshift.com/[Openshift Blog, window="_blank"]
+****
+
+[type=walkthroughResource,serviceName=fuse-managed]
+.Fuse Online
+****
+* link:{fuse-url}[Console, window="_blank"]
+* link:https://access.redhat.com/documentation/en-us/red_hat_fuse/7.4/html/integrating_applications_with_fuse_online/index[Documentation, window="_blank"]
+* link:https://www.redhat.com/en/technologies/jboss-middleware/fuse-online[Overview, window="_blank"]
+****
+
+[type=walkthroughResource,serviceName=apicurito]
+.Red Hat API Designer
+****
+* link:{apicurio-url}[Console, window="_blank"]
+****
+
+[type=walkthroughResource,serviceName=3scale]
+.3Scale
+****
+* link:{api-management-url}[Console, window="_blank"]
+* link:https://access.redhat.com/documentation/en-us/red_hat_3scale_api_management/2.7/[Documentation, window="_blank"]
+* link:https://www.redhat.com/en/technologies/jboss-middleware/3scale[Overview, window="_blank"]
+****
+
+[type=walkthroughResource,serviceName=codeready]
+.CodeReady Workspaces
+****
+* link:{che-url}[Console, window="_blank"]
+* link:https://developers.redhat.com/products/codeready-workspaces/overview/[Overview, window="_blank"]
+* link:https://access.redhat.com/documentation/en-us/red_hat_codeready_workspaces/2.0/[Documentation, window="_blank"]
+****
+
+:sectnums:
+
+[time=20]
+== Data Ingestion from AMQ Streams to Postgres using Fuse Online
+
+Fuse Online is an enterprise integration platform that provides connectors for many services, such as AMQ Streams and Postgres.
+In this section we will create two *Connections* - one to AMQ Streams and one to Postgres.
+We will then create an *Integration* that uses these two connections and translates the incoming data from AMQ Streams into database *INSERT* statements on Postgres.
+
+=== Creating the AMQ Streams Connector
+
+In this step you will create a *Connection* that will enable your *Integration* to connect to a pre-existing AMQ Streams Broker.
+
+. Log in to the link:{fuse-url}[Red Hat Fuse Online, window="_blank"] console. Accept the permissions requests if prompted.
+
+. Select *Connections* from the left hand menu.
+
+. Select the *Create Connection* button to start the *Create Connection* wizard.
+
+. When prompted with *Select Connector*, select *Kafka Message Broker*.
+
+. When prompted with *Configure connection*:
+.. Enter the following in the *Kafka Broker URIs* field:
++
+[subs="attributes+"]
+----
+{kafka-broker-uri}
+----
+.. Click the *Validate* button to ensure the connection to AMQ Streams is configured correctly.
+.. You should see the message `Kafka Message Broker has been successfully validated`.
+.. Click Next to move onto the *Name connection* step
+
+. When prompted with *Name connection*:
+.. Enter the following in the *Name* field:
++
+[subs="attributes+"]
+----
+{fuse-streams-connection-name}
+----
+. Click *Save*.
+
+
+[type=verification]
+Is a connection named *{fuse-streams-connection-name}* displayed on the *Connections* screen of the link:{fuse-url}[Red Hat Fuse Online, window="_blank", id="{context}-4"] console?
+
+[type=verificationFail]
+Verify that you followed each step in the procedure above.  If you are still having issues, contact your administrator.
+
+
+=== Creating the Postgres Connector
+
+To allow Fuse Online to write data consumed from AMQ Streams to Postgres, we need to create a new Database connection in Red Hat Fuse Online.
+
+. Log in to the link:{fuse-url}[Red Hat Fuse Online, window="_blank"] console.
+
+. Select *Connections* from the left hand menu.
+
+. Select the *Create Connection* button to start the *Create Connection* wizard.
+
+. Select *Database* to configure a *Postgres* connection.
+
+. Enter the connection URL:
++
+[subs="attributes+"]
+----
+{postgres-connection-url}
+----
+
+. Enter the Username:
++
+[subs="attributes+"]
+----
+{postgres-username}
+----
+
+. Enter the password:
++
+[subs="attributes+"]
+----
+{postgres-password}
+----
+
+. Leave the Schema field blank for now.
+
+. Select the *Validate* button to check that the values are valid.
+
+. Click *Next* and enter a name for the connection, for example:
++
+[subs="attributes+"]
+----
+{fuse-database-connection-name}
+----
+
+. Click *Save*.
+
+
+[type=verification]
+Is the new Postgres connection displayed on the *Connections* screen of the link:{fuse-url}[Red Hat Fuse Online, window="_blank", id="{context}-6"] console?
+
+[type=verificationFail]
+Verify that you followed each step in the procedure above.  If you are still having issues, contact your administrator.
+
+
+=== Creating the Integration between AMQ Streams and Postgres for traffic data
+
+. Log in to the link:{fuse-url}[Red Hat Fuse Online, window="_blank"] console.
+
+. Select *Integrations* from the left hand menu.
+
+. Select the *Create Integration* button to start the *Create Integration* wizard.
+
+. Choose *{fuse-streams-connection-name}* as the connection that starts the integration.
+
+. When prompted to *Choose an Action*, select *Subscribe*.
+
+. When prompted to select a *Topic Name*, select *{streams-junction-topic-name}*:
+
+. When prompted to *Specify Output Data Type*:
+.. Select *JSON Schema* as the type.
+.. Enter the following in the *Definition* field:
++
+[subs="attributes+"]
+----
+{
+	"$schema": "http://json-schema.org/draft-04/schema#",
+	"type": "object",
+	"properties": {
+		"junctionId" : { "type": "number" },
+		"timestamp" : { "type": "number" },
+		"counts" : {
+			"type" : "object",
+			"properties" : {
+				"ns": { "type": "number" },
+				"ew": { "type": "number" }
+			}
+		}
+	}
+}
+----
+.. Enter *junction_data* in the *Data Type Name* field.
+.. Click *Next*.
+
+. Choose *{fuse-database-connection-name}* as the *Finish Connection*.
+
+. When prompted to *Choose an Action*, select *Invoke SQL*.
+
+. When prompted with *Configure the action*, enter the following:
+.. Enter the following in the *SQL statements* field:
++
+[subs="attributes+"]
+----
+INSERT INTO {postgres-junction-status-table} (junction_id, timestamp, count_ns, count_ew)
+VALUES (:#junction_id, to_timestamp(:#timestamp), :#count_ns, :#count_ew);
+----
+.. Leave the *Batch update* and *Raise error when record not found* boxes unchecked.
+.. Click *Next*.
+
+. When prompted to *Add to Integration*, click on the blue *+* icon between the *Subscribe* step and the *Invoke SQL* step.
+
+. Select *Data Mapper* to map the source fields in the AMQ Streams JSON schema to the placeholder parameters in the SQL Statement:
+.. Click and drag *junctionid* from the Source coulmn to *junction_id* in the *Target* column.
+.. Click and drag *timestamp* from the Source coulmn to *timestamp* in the *Target* column.
+.. Expand the *counts* object to expose the two child objects - *ew* and *ns*.
+.. Click and drag *ew* from the Source coulmn to *count_ew* in the *Target* column.
+.. Click and drag *ns* from the Source coulmn to *count_ns* in the *Target* column.
+.. Click *Done* to navigate back to the *Integration* screen.
+
+. Click *Publish*.
+. When prompted, enter a name, for example:
++
+[subs="attributes+"]
+----
+{streams-junction-data-integration}
+----
+. Click *Save and publish*.
+
+. The *Integration Summary* dashboard will show your *Integration* is being built into a container image that will be deployed on the OpenShift cluster.
+
+[type=verification]
+Is the integration displayed as *Building*, *Deploying*, or *Running* on the *Integration* screen of the link:{fuse-url}[Red Hat Fuse Online, window="_blank", id="{context}-1"] console?
+
+[type=verificationFail]
+
+****
+. Navigate to the link:{fuse-url}[Red Hat Fuse Online, window="_blank"] Integrations screen. Verify the Integration is listed.
+
+. Verify that you followed each step in the procedure above. If you are still having issues, contact your administrator.
+****
+
+
+=== Creating the Integration between AMQ Streams and Postgres for parking meter data
+
+. Repeat the steps above for the *{streams-junction-data-integration}* integration, with the following changes:
+
+.. When prompted for a *Topic Name*, enter:
++
+[subs="attributes+"]
+----
+{streams-meter-topic-name}
+----
+.. Enter the following in the JSON Schema *Definition* field:
++
+[subs="attributes+"]
+----
+{
+	"$schema": "http://json-schema.org/draft-04/schema#",
+	"type": "object",
+	"properties": {
+		"meterId" : { "type": "number" },
+		"timestamp" : { "type": "number" },
+		"status" : { "type": "string" }
+	}
+}
+----
+.. Enter *meter_data* in the *Data Type Name* field.
+.. When configuring the SQL Statement, enter the following:
++
+[subs="attributes+"]
+----
+INSERT INTO {postgres-meter-status-table} (meter_id, status_text, timestamp)
+ VALUES (:#meter_id, :#status_text, to_timestamp(:#timestamp));
+----
+.. When adding the *Data Mapper* map the 3 fields as follows:
+... meterId => meter_id
+... timestamp => timestamp
+... status => status_text
+.. Enter *{streams-meter-data-integration}* as the Integration name then click *Save and Publish*.
+
+[type=verification]
+Is the integration displayed as *Integrations* screen of the link:{fuse-url}/integrations[Red Hat Fuse Online, window="_blank"] console?
+
+[type=verificationFail]
+
+****
+. Navigate to the link:{fuse-url}[Red Hat Fuse Online, window="_blank"] Integrations screen. Verify the Integration is listed.
+
+. Verify that you followed each step in the procedure above. If you are still having issues, contact your administrator.
+****
+
+
+[type=taskResource]
+.Task Resources
+****
+* https://access.redhat.com/documentation/en-us/red_hat_fuse/{fuse-version}/html-single/integrating_applications_with_fuse_online/creating-integrations_ug#creating-integrations_ug[Creating integrations, window="_blank"]
+****
+
+
+[time=10]
+== API Definition using Red Hat API Designer
+
+Red Hat API Designer is a tool that provides the ability to create *OpenAPI Specification* compatible API definitions.
+The OpenAPI Specification (OAS) defines a standard, language-agnostic interface to RESTful APIs which allows both humans and computers to discover and understand the capabilities of the service without access to source code, documentation, or through network traffic inspection.
+
+When properly defined, a consumer can understand and interact with the remote service with a minimal amount of implementation logic.
+An OpenAPI definition can then be used by documentation generation tools to display the API, code generation tools to generate servers and clients in various programming languages, testing tools, and many other use cases.
+For more information on the *OpenAPI Specification* see the link:{oas3-url}[Open API Specification, window="_blank"] on GitHub
+
+In this section we will use the Red Hat API designer to explore a pre-built an OpenAPI Specification which is used in the implementation of our API Server.
+The APIs created will combine data from the provided Lookup Tables in Postgres - *{postgres-junction-lookup-table}* and *{postgres-meter-lookup-table}* - with the data from the live junction and meter tables which is being ingested from AMQ Streams.
+
+=== Viewing an Open API Spec
+
+. Download the ZIP file containing the OpenAPI Spec from link:https://gist.github.com/evanshortiss/b658a32c4145e59525f90bbbec68db4a/archive/f0057efb472253b382b5a9a9150924359c558302.zip[this link].
+. Unzip the file and open the resulting folder. It should contain a JSON file that holds that OpenAPI Spec data.
+. Open the link:{apicurio-url}[Red Hat API Designer Dashboard, window="_blank"] and click the *OpenAPI* button.
+. When prompted to choose a file select the JSON file you just unzipped.
+
+[type=verification]
+Did the Red Hat API Designer UI render the OpenAPI Spec using the file you uploaded?
+
+[type=verificationFail]
+Verify that you selected the correct JSON file. If the OpenAPI Spec fails to render in Red Hat API Designer please contact the lab administrator.
+
+=== View API Data Types
+
+This API contains two primary data types, the *Junction* and *Meter*. Here's how you can view their properties using Red Hat API Designer.
+
+. On the left-hand side of the Red Hat API Designer UI you should see a *Data Types* section after the OpenAPI Spec JSON was loaded.
+. Choose the *Junction* item under the *Data Types* heading. Information and properties of a *Junction* are now displayed on the right of the Red Hat API Designer UI.
+. Select the *Source* tab at the top of the right-hand pane to view the data that represents a *Junction* type in this OpenAPI Spec.
+. Click the *As JSON* button on the right to toggle between JSON and YAML representations of the OpenAPI spec.
+. Choose the *Meter* item under the *Data Types* heading.
+. Note that the *Meter* has fewer properties than the *Junction*, but it utilises an *Enum* type to specify valid states that a Meter can be in.
+
+=== API Paths
+
+. Lastly, click each of four entries listed under the *Paths* heading and note that each path only supports *GET* requests since this going to be a readonly API.
+. Two of the endpoints support a path parameter as denoted by the placeholder brackets - `{}`, for example `/meters/32` would return information for a meter with the ID of `32`.
+. Note that the `/meters` meters endpoint supports a query parameter named `status` that can be set to one of four values defined by an *Enum* type.
+
+Once you're happy that you understand the API endpoints and parameters continue to the next section.
+
+[time=15]
+== Deployment of the API Implementation
+In this section you'll deploy a pre-built implementation of the OpenAPI Specification you explored in the previous section. This API will allow you to access the Parking Meter and Junction data that your Fuse Online Integration has written to Postgres.
+
+=== Connecting to Postgres
+
+When deploying API server implementation, you will need to use the following details to connect your API Server to your Postgres DB:
+
+. Username: `{postgres-username}`
+. Password: `{postgres-password}`
+. Hostname: `{postgres-hostname}`
+. Database: `{postgres-database}`
+. Port: `{postgres-port}`
+
+{blank}
+
+The *username* and *password* information will be provided to your API server via a *Secret* that you will create in the OpenShift UI.
+
+=== Create a DeploymentConfig
+
+A *DeploymentConfig* is an OpenShift API Object that defines the state and deployment environment of an application. This includes, but isn't limited to the number of instances (known as *Pods*) and environment variables.
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Choose *Home > Projects* from the side menu and select *{walkthrough-namespace}* from the list. This will display the *Project Details* screen.
+. Select the *Workloads* tab from the *Project Details* screen.
+. Select *add other content* from the *Workloads* screen.
+. Choose the *Container Image* option from the *Add* screen.
+. On the *Deploy Image* screen enter the following:
+.. For *Image Name* enter `quay.io/evanshortiss/summit-2020-rhmi-lab-nodejs-backend` and click the search icon to display the container image details.
+.. Leave the *Name* and *Application Name* fields at their default values.
+.. Under the *Resources* section choose *DeploymentConfig* if prompted.
+.. Leave the *Create a route to the application* box checked under the *Advanced Options* section.
+. Finally, click *Create* to deploy the container image.
+
+{blank}
+
+At this point you've successfully created a *DeploymentConfig* for your application, but it needs some modifications to connect to the City Postgres database.
+
+=== Create a Secret
+
+Secrets can be used to store sensitive information securely such that it's not visible in plaintext when interacting with the OpenShift Cluster. The following steps will have you create a Secret to store the database connection details.
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Choose *Home > Projects* from the side menu and select your *{walkthrough-namespace}* from the list. This will display the *Project Details* screen.
+. Choose *Workloads > Secrets* and click the *Create > Key/Value Secret* button on the *Secrets* screen.
+. Enter `pg-secrets` in the *Secret Name* field.
+. Create a key named `username` with a value of `{postgres-username}`.
+. Click *Add Key/Value* to create another key/value pair.
+. Enter the key name of `password` with a value of `{postgres-password}`.
+. Click *Create*.
+
+[type=verification]
+Is the Secret listed under *Workloads > Secrets*, and if you view it are the *username* and *password* values obscured in the OpenShift UI?
+
+[type=verificationFail]
+Verify that you're in the correct section of the OpenShift UI and followed the directions. If the Secret cannot be created or viewed please talk to your lab administrator.
+
+=== Update the DeploymentConfig with the Postgres Secret
+
+Now that you've created a *Secret* containing the database connection information it's time to put it to use.
+
+The key/value pairs stored in the *Secret* can be associated with the *DeploymentConfig*, and exposed to the underlying application as *Environment Variables*.
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Choose *Workloads > DeploymentConfigs* from the side menu and verify the selected Project is set to *{walkthrough-namespace}* using the dropdown.
+. Select the *{dc-name}* item in the list. The *Deployment Config Details* screen is displayed.
+. Select *Environment* tab and click *Add from ConfigMap or Secret*.
+. In the new row, `PG_USERNAME` in the *name* field and select the *pg-secrets* resource and *username* key.
+. Click *Add from ConfigMap or Secret* again.
+. In the new row, `PG_PASSWORD` in the *name* field and select the *pg-secrets* resource and *password* key.
+. Click the *Save* button.
+
+{blank}
+
+This will cause a redeployment of the application *Pods*. You can verify this from *Workloads > Pods*.
+
+=== Verify the Deployment
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Choose *Workloads > Pods* and verify the selected Project is set to *{walkthrough-namespace}* using the dropdown.
+. You should see a *Pod* named *{dc-name}* followed by a number and unique ID in the list, e.g *{dc-name}-2-ab21d*. The *Status* column for this Pod should state that it's *Running*.
+. Choose *Networking > Routes* from the side menu and verify the selected Project is set to *{walkthrough-namespace}* using the dropdown.
+. A route named *{dc-name}* should be listed in a table.
+. Click the URL listed under the *Location* to view the Swagger UI docs for your deployed Node.js API.
+. From the Swagger UI displayed in your browser expand the */meters* and click the *Try it out* button.
+. Optionally, choose a value from the *status* dropdown.
+. Click the blue *Execute* button to make a request to the API and verify that a JSON response is shown in the *Server response* section of the Swagger UI.
+
+You should see a JSON response similar to the sample below:
+
+[subs="attributes+"]
+----
+[
+  {
+    "status_text": "available",
+    "latitude": 34.0509,
+    "address": "301 S HILL ST",
+    "longitude": -118.25,
+    "meter_id": 1074,
+    "last_updated": "2020-03-20T21:40:12.000Z"
+  },
+  {
+    "status_text": "available",
+    "latitude": 34.0623,
+    "address": "10801 W WEYBURN AVE",
+    "longitude": -118.443,
+    "meter_id": 455,
+    "last_updated": "2020-03-20T21:38:42.000Z"
+  }
+]
+----
+
+[type=verification]
+Are you able to execute queries and see JSON results in Swagger UI?
+
+[type=verificationFail]
+
+Verify that the *Pod* you checked as part of *Verify the Deployment* is in a *Running* state. If the URL does not display a Swagger UI or the *Server response* is not in the correct JSON format please contact the lab administrator.
+
+[time=20]
+== API Protection using 3scale API Management
+
+In 3scale, we will be dealing with the following constructs:
+. A *Product* defines the developer/consumer facing end service you wish to make available for consumption.
+. A *Backend* defines the backend service(s) you wish to protect and make available via a *Product*.
+. An *Applications* define the credentials (e.g. API Key) to access your API. Applications are stored within *Developer Accounts*.
+. An *Application Plan* determines the access policies and is always associated with one *Application*.
+
+In order to secure the traffic and parking meter service that was built in the previous section, we will be performing the following activities in 3scale:
+. Creating a new Product and Backend
+. Creating an Application Plan
+. Creating an Application
+. Configuring the API Settings
+
+
+=== API Management Login
+
+. Open the link:{api-management-url}[3scale Login screen, window="_blank"] and click the *Red Hat Single Sign On* option. This triggers an OAuth Flow and redirects you back to the {3Scale-ProductName} Dashboard, or will request you to login using the same flow as you've become accustomed to.
+. Upon successful login enter your account details as:
+.. *Username*: `{user-username}`
+.. *Email*: `{user-username}@example.com`
+.. Enter your *First name* and *Last name* as desired
+. Dismiss the *OK,how does 3Scale work?* dialog using the *X* icon in the top right. The main Dashboard is displayed.
+
+{blank}
+
+[type=verification]
+Can you see the {3Scale-ProductName} Dashboard and navigate the main menu?
+
+[type=verificationFail]
+Verify that you followed each step in the procedure above. If you are still having issues, contact your administrator.
+
+=== Creating a New Product
+
+. From the *Dashboard*, select the *New Product* item.
+. Select the *Define Manually* option.
+. Enter the following as the *Name* and *System name*:
++
+[subs="attributes+"]
+----
+{3scale-api-name}
+----
+. Leave the *Description* field empty.
+. Click *Create Product* at the bottom of the screen.
+
+{blank}
+
+=== Creating an Application Plan
+. Verify that *Product: {3scale-api-name}* is selected in the top navigation menu of {3Scale-ProductName}.
+. Select *Applications > Application Plans* from the side navigation.
+. Click *Create Application Plan* on the right side of the screen.
+. Enter the following for *Name* and *System name*:
++
+[subs="attributes+"]
+----
+{3scale-plan-name}
+----
+. Leave the other fields with their default values.
+. Select *Create Application Plan*. You will be redirected to the *Application Plans* screen.
+. Select the *Publish* link, beside your plan list item, to publish the Plan.
+
+{blank}
+
+=== Creating an Application
+. Select *Audience* from the top navigation bar dropdown.
+. Select the *Developer* Account to open the *Account Summary* page.
+. Select the *(num) Application* item from the breadcrumb at the top of the screen to view Applications.
+. Click the *Create Application* button in the top right.
+. Select the *{3scale-plan-name}* Plan within the *{3scale-api-name}* section in the *Application plan* dropdown.
+. Enter the following for *Name* and *Description*:
++
+[subs="attributes+"]
+----
+{3scale-app-name}
+----
+. Click *Create Application*.
+
+=== Creating a Backend
+
+. Verify that *Dashboard* is selected in the top navigation menu of {3Scale-ProductName}.
+. Select *Backends* from the *APIs* section.
+. Click the *New Backend* link.
+. Enter `{3scale-backend-name}` in the *Name* and *System name* fields.
+. In the *Private endpoint* field enter `http://summit-2020-rhmi-lab-nodejs-backend.{walkthrough-namespace}.svc.cluster.local:8080`.
++
+NOTE: This is a private URL that is not accessible on public networks. Only other services running on the OpenShift Clutser can access it.
+. Click *Create Backend*.
+. Verify that *Backend: {3scale-backend-name}* is selected in the top navigation menu of {3Scale-ProductName}.
+. Select *Mapping Rules* from the side navigation.
+. Click *Add Mapping Rule* on the *Mapping Rules* screen to create a mapping rule:
+.. Select *GET* for the *Verb*.
+.. Enter */meters* in the *Pattern* field.
+.. Leave the other fields with their default values.
+.. Click *Create Mapping* rule.
+. Create another *Mapping Rule* for `GET /junctions` following the same steps as you did for `GET /meters`.
+
+=== Configure, Deploy, and Verify the API
+
+In this section you'll see how the resources created in previous sections are utilised to access the API.
+
+. Verify that *Product: {3scale-api-name}* is selected in the top navigation menu of {3Scale-ProductName}.
+. Select *Integration > Settings*:
+.. In the *Staging Public Base URL* field enter `{3scale-staging-api-host}`.
+.. Under the *Credentials Location* section choose `As HTTP Headers`.
+.. Scroll down and click the *Update Product* button.
+. Select *Integration > Configuration* from the side menu and click *add a Backend and promote this configuration* :
+. In the *Add Backend* screen select your *{3scale-backend-name}* in the *Backend* field and click *Add to Product*.
+. Return to the *Integration > Configuration* section and click *Promote v. 1 to Staging* button.
+. The *Environments* section in *Integration > Configuration* should now contain the *Staging Environment* details.
+. Use the *Example curl for testing* to retrieve available meters via cURL or you're preferred HTTP client, e.g:
++
+[subs="attributes+"]/
+----
+curl "{3scale-staging-api-host}/meters?status=available&user_key=4b7708e722733fe0e6b355a7dfd1f777"
+----
+
+[time=15]
+== Frontend visualisation using React and Patternfly 4
+
+In this section you will deploy a web UI that displays the latest parking meter and junction traffic information by retrieving it from the {3Scale-ProductName} API. The UI is created using PatternFly, an open source design system created to enable consistency and usability across a wide range of applications and use cases.
+
+Deployment of the UI requires customisation to account for your specific {3Scale-ProductName} API Key and Staging URL. This means you'll be creating a *Build Config* that will use the source-to-image (s2i) strategy to create a container image via a *Build* - your API Key and Staging URL will be injected into the *Build*.
+
+Once the UI is deployed it will provide two primary pages; Parking Meters and Traffic Junctions.
+
+The Parking Meters page will:
+
+. Display a Google Map
+. Render a map marker for each meter
+. Cluster the meters when the map is zoomed out
+. Support filters for each meter state, e.g show only "available" parking meters
+
+{empty} +
+
+The Traffic Junctions page will:
+
+. Display a Google Map
+. Use Heatmap functionality from Google Maps to render traffic conditions
+
+{empty} +
+
+=== Create a Build from Git
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Select the *Developer* view using the dropdown underneath the Red Hat OpenShift logo.
+. Select the *{walkthrough-namespace}* from the *Project* dropdown to the right of where you chose the developer view.
+. From the left-side menu select *Add*.
+. In the main content area a list of options should be presented. Choose the *From Git* option.
+. An *Import from Git* wizard is displayed. Enter the following in *Git Repo URL*: `https://github.com/evanshortiss/rhmi-enablement-2020-lab`.
+. Expand the *Advanced Git Options* section and enter `/solutions/traffic-application-frontend` in the *Context Dir*.
+. Select the *Modern Webapp* (JS icon) under *Builder Image*.
+. Select 10.x under the *Builder Image Version* dropdown.
+. Enter `{is-name}-app` for *Application Name* and `{is-name}` for *Name*.
+. Select *DeploymentConfig* under the *Resources* section.
+. Ensure that *Create a route to the application* is checked.
+. Click the *Build Configuration* link and create the following *Environment Variables*:
+.. `API_URL` with the value of your 3scale Staging API URL.
+.. `API_KEY` with the value of your 3scale Staging API Key.
+.. `MAPS_API_KEY` with a value provided by the lab administrator, or your own Google Maps API Key.
+. Click the *Routing* link:
+.. Set *Target Port*  `8080`.
+.. Ensure *Secure Route* is checked.
+.. Set *TLS Termination* to `Edge`.
+.. Set *Insecure Traffic* to `Redirect`.
+. Scroll down and click *Create*.
+
+
+=== Monitor the Build
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Select the *Developer* view using the dropdown underneath the Red Hat OpenShift logo.
+. Select the *{walkthrough-namespace}* from the *Project* dropdown to the right of where you chose the developer view.
+. Choose *Builds* on the left menu.
+. Select the *traffic-frontend* build and navigate to the *Builds* tab.
+. Select the *traffic-frontend-1* build and then the *Logs* tab.
+
+=== Create a Build Config in OpenShift
+
+In this section you will create a *Build Config* that uses the s2i (source-to-image) strategy to package source code from a Git repository into a container image.
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Select *Home > Projects* from the side menu and select *{walkthrough-namespace}* from the list. This will display the *Project Details* screen.
+. Select *Builds > Build Configs* and click the *Create Build Config* button.
+. Delete sample YAML and copy and paste the YAML below in its place.
++
+[subs="attributes+"]/
+----
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: {is-name}
+  namespace: {walkthrough-namespace}
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: '{is-name}:latest'
+  strategy:
+    type: Source
+    sourceStrategy:
+      from:
+        kind: ImageStreamTag
+        namespace: openshift
+        name: 'nodejs:10'
+      env:
+        - name: API_KEY
+          value: "3SCALE_API_KEY"
+        - name: API_URL
+          value: "3SCALE_STAGING_URL"
+        - name: MAPS_API_KEY
+          value: "ASK_YOUR_LAB_ADMIN"
+  source:
+    git:
+      uri: 'https://github.com/evanshortiss/rhmi-enablement-2020-lab'
+      ref: master
+    contextDir: solutions/traffic-application-frontend
+  triggers:
+    - type: ImageChange
+      imageChange: {}
+    - type: ConfigChange
+----
+. Replace the `3SCALE_API_KEY` and `3SCALE_STAGING_URL` with values from the *Example curl for testing* item in the previous section {3Scale-ProductName}.
+. The lab instructor(s) will provide a value for the `MAPS_API_KEY`.
+. Take note of the following highlights in the YAML:
+.. It contains an *output* section that instructs the resulting *Build* to write the image to the previously created *Image Stream*.
+.. Specifies a Git repo *uri* and *ref* to use as source code inputs, and specifies the *contextDir* that contains the specific code to build.
+.. Provides environment variables via the *env* section that are required for a successful build output for our specific application.
+. Click *Create* to create the Build Config.
+. Navigate to *Builds > Builds* to see that a *Build* is already running based on the Build Config.
+. Click the Build and take a look at the *Logs* tab to see it's progress. The build can take a few minutes to complete. It will be marked *Complete* on the *Builds* screen once the image has been generated.
+
+=== Deploy the Frontend Build
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Select *Home > Projects* from the side menu and select *{walkthrough-namespace}* from the list. This will display the *Project Details* screen.
+. Select *Workloads > Deployments* and click the *Create Deployment* button.
+. Copy and paste the following YAML into the textarea:
++
+[subs="attributes+"]/
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {is-name}
+  namespace: {walkthrough-namespace}
+spec:
+  selector:
+    matchLabels:
+      app: {is-name}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {is-name}
+    spec:
+      containers:
+        - name: {is-name}
+          image: image-registry.openshift-image-registry.svc:5000/{walkthrough-namespace}/{is-name}
+          ports:
+            - containerPort: 8080
+----
+. Click *Create*. This will deploy the container image created by the Build in the previous section.
+. Next, a *Service* needs to be created to facilitate routing traffic to the container:
+.. Select *Networking > Services* .
+.. Click the *Create Service* button.
++
+[subs="attributes+"]/
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: {is-name}
+  namespace: evals01-summit-035a
+  labels:
+    app: {is-name}
+spec:
+  ports:
+    - name: 8080-tcp
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: {is-name}
+----
+. Lastly, a *Route* is required to support ingress of public traffic to the application *Service*:
+.. Select *Networking > Routes*.
+.. Click the *Create Route* button.
+.. Enter `{is-name}` in the *Name* field.
+.. Enter `{user-username}-{is-name}.{openshift-app-host}` in the *Hostname* field.
+.. Leave *Path* at the default value.
+.. Select the `{is-name}` from the *Service* dropdown.
+.. Select the `8080` from the *Target Port* dropdown.
+.. Check the *Secure route* checkbox.
+.. Select `Edge` as the *TLS Termination* option.
+.. For *Insecure Traffic* choose `Redirect`.
+.. Scroll down and click *Create*.
+
+=== Using the Application
+
+Now it's time to see everything come together.
+
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Select *Home > Projects* from the side menu and select *{walkthrough-namespace}* from the list. This will display the *Project Details* screen.
+. To view the application UI, select *Networking > Routes* and click the URL in the *Location* column for the *{is-name}* item.
+. Take a look at the *Traffic Map* and *Parking Map* pages to see live traffic and parking meter status information displayed on a map.
+
+[type=verification]
+Is the *Traffic Heatmap* page displayed? It should be showing a map with clusters showing traffic hot spots.
+
+[type=verificationFail]
+Verify that the *{is-name}* application *Pod* is in a *Running* state. If the map loads but no heatmap is overlaid then verify that the *{dc-name}* application *Pod* is in a *Running* state. Ask your lab administrator for assistance if necessary.
+
+Congratulations, in this lab you've:
+
+. Created Connections and an Integration in Red Hat Fuse Online to consume IoT data from AMQ Streams (Kafka).
+. Become familiar with Red Hat API Designer and used it to explore the API definition for this lab's backend.
+. Deployed a container image and integrated it with a Postgres database using OpenShift APIs.
+. Created a Product, Backend, Application, and Application Plan in {3Scale-ProductName} then promoted your API to a Staging Environment for .
+. Created an OpenShift ImageStream, Build Config, Deployment, Service, and Route to make the frontend application available.

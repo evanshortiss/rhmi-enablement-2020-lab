@@ -1,0 +1,4 @@
+---
+- name: Delete lab project
+  shell: oc delete project city-of-losangeles --ignore-not-found=true
+  ignore_errors: True
