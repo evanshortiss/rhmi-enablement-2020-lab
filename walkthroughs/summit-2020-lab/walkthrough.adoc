@@ -34,9 +34,9 @@
 
 :is-name: traffic-frontend
 
-= Red Hat Summit 2020 RHMI Lab
+= RHMI Spring Enablement 2020 Lab
 
-Welcome to the Red Hat Summit 2020 Red Hat Managed Integration Lab!
+Welcome to the Red Hat Spring Enablement 2020 Red Hat Managed Integration Lab!
 
 Red Hat Managed Integration (RHMI) delivers cloud-based agile integration services hosted on OpenShift Dedicated (OSD). Using RHMI we can create consistent, immediately available, managed environments so that development teams can more easily build enterprise applications on OpenShift.
 These environments accelerate engagement timelines, reduce operational risk and cost, and address the needs of the evolving enterprise integration market.
