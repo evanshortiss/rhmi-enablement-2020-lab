@@ -837,6 +837,8 @@ Was the application frontend displayed after you logged in?
 [type=verificationFail]
 Verify that you created the `testuser` account and set the password correctly.
 
+{blank}
+
 Congratulations, in this lab you've:
 
 . Created Connections and an Integration in Red Hat Fuse Online to consume IoT data from AMQ Streams (Kafka).
