@@ -127,6 +127,8 @@ In this step you will create a *Connection* that will enable your *Integration* 
 . Log in to the link:{fuse-url}[Red Hat Fuse Online, window="_blank"] console. Accept the permissions requests if prompted.
 
 . Select *Connections* from the left hand menu.
++
+NOTE: You can delete the existing *PostgresDB* connection using the 3 dots icon to access a menu with the *Delete* option.
 
 . Select the *Create Connection* button to start the *Create Connection* wizard.
 
