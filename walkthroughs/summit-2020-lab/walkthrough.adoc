@@ -554,6 +554,8 @@ In order to secure the traffic and parking meter service that was built in the p
 . Dismiss the *OK,how does 3Scale work?* dialog using the *X* icon in the top right. The main Dashboard is displayed.
 . Verify that the {3Scale-ProductName} looks like the screenshot below.
 
+{blank}
+
 image::images/3scale-ui.png[3scale, role="integr8ly-img-responsive"]
 
 {blank}
@@ -760,7 +762,80 @@ Is the *Traffic Heatmap* page displayed? It should be showing a map with cluster
 [type=verificationFail]
 Verify that the *{is-name}* application *Pod* is in a *Running* state. If the map loads but no heatmap is overlaid then verify that the *{dc-name}* application *Pod* is in a *Running* state. Ask your lab administrator for assistance if necessary.
 
-{blank}
+[time=10]
+== Protect the Application using Red Hat SSO
+
+Lastly, you will protect the frontend application from unauthorised access using Red Hat SSO.
+
+=== Create a Realm in Red Hat SSO
+
+Realms contain details related to a specific group of applications (*Clients*) and *Users*. A *Realm* also contains settings for *Identity Providers* and *User Ferderation* via LDAP and other protocols. You will need a realm to get started.
+
+. Login to the link:{user-sso-url}[Customer Application SSO, window="_blank"] using your standard credentials.
+. From the side menu click the *Realm* dropdown that contains the word *Master* by default.
+. Select *Add Realm*:
+.. Enter `{username}-realm` in the *Name* field.
+.. Ensure *Enabled* is set to `ON`.
+.. Click *Create*.
+
+=== Create a Client in Red Hat SSO
+
+A *Client* represents a specific application. In this case, you will create a client to represent the traffic application frontend. This will be a `public` client since it's used to protect a web application.
+
+. Login to the link:{user-sso-url}[Customer Application SSO, window="_blank"] using your standard credentials.
+. From the *Realm* dropdown in the side menu choose your new `{username}-realm` Realm.
+. Select *Clients* on the left and click the *Create* button at the top of the list. The *Add Client* screen is displayed:
+.. Enter `{is-name}` in the *Client ID* field.
+.. Set *Client Protocol* to `openid-connect`.
+.. Leave *Root URL* blank.
+.. Click *Save*.
+. The `{is-name}` client settings are displayed.
+. Verify that *Access Type* is set to `public`.
+. In the *Valid Redirect URIs* field enter `{route-traffic-frontend-host}*`
+. Enter `{route-traffic-frontend-host}*` in the *Web Origins* field.
+
+=== Create a User in Red Hat SSO
+
+You need to create a user to login to the application. Generally this will be done for testing only, and a LDAP or social identity provider is used to authenticate users in production scenarios.
+
+. Login to the link:{user-sso-url}[Customer Application SSO, window="_blank"] using your standard credentials.
+. From the *Realm* dropdown in the side menu choose your new `{username}-realm` Realm.
+. Select *Users* from the side menu and click *Add User*:
+.. Enter `testuser` in the *Username* field.
+.. Enter `testuser@example.com` in the *Email* field.
+.. Set *User Enabled* to `ON`.
+.. Set *Email Verified* to `ON`.
+.. Click *Save*.
+. Select the *Credentials* tab and enter `password` for *New Password* and *Password Confirmation*.
+. Set *Temporary* to `OFF`.
+. Click *Reset Password*.
+
+=== Enable SSO for the Traffic Frontend
+
+. Login to the link:{user-sso-url}[Customer Application SSO, window="_blank"] using your standard credentials.
+. From the *Realm* dropdown in the side menu choose your new `{username}-realm` Realm.
+. Select your `{is-name}` from the *Clients* list.
+. Choose the *Installation* tab and change the *Format* dropdown to `Keycloak OIDC JSON`.
+. Select and copy the JSON to the clipboard.
+. Login to the link:{openshift-console-url}[OpenShift Console, window="_blank"].
+. Select the *Developer* view using the dropdown underneath the Red Hat OpenShift logo.
+. From the *Topology* view select the `{is-name}` item and select *Edit DeploymentConfig* from the *Actions* dropdown.
+. Select the *Environment* tab from the *Deployment Config Details* screen.
+. Create a variable named `KEYCLOAK_CONFIG` and paste the JSON you copied into the value field.
+. Scroll down and click *Save*.
+. Return to the *Overview* screen for the *{is-name}* and wait for the deployment to complete.
+
+=== Test the Red Hat SSO Integration
+
+. Open your link:{route-traffic-frontend-host}[Traffic Frontend].
+. A login screen should be displayed.
+. Login using the credentials `testuser` and `password`.
+
+[type=verification]
+Was the application frontend displayed after you logged in?
+
+[type=verificationFail]
+Verify that you created the `testuser` account and set the password correctly.
 
 Congratulations, in this lab you've:
 
