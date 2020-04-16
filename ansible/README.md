@@ -35,6 +35,8 @@ Once this has completed you can login as `evals01` thru `evals75` using the
 password `$USERNAME-password` where `$USERNAME` is `evals01` or similar, e.g
 `evals01-password`.
 
+Finally, in the Solution Explorer use the settings screen to add the labs content URL of `https://github.com/evanshortiss/rhmi-enablement-2020-lab`.
+
 ## Uninstall Instructions
 
 Same as deployment, but use the `uninstall.yml` playbook.
